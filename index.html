@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tropical Listening Slice</title>
+    <style>
+        :root {
+            --ocean-blue: #0077be;
+            --sand-yellow: #f4d03f;
+            --palm-green: #2ecc71;
+            --sunset-orange: #e67e22;
+            --hibiscus-pink: #ff69b4;
+            --text-dark: #2c3e50;
+            --bg-light: #fdfaf0;
+            --danger-red: #e74c3c;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-light);
+            font-family: 'Verdana', sans-serif;
+            color: var(--text-dark);
+            overscroll-behavior: none;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw; height: 100vh;
+            background: linear-gradient(to bottom, #87CEEB 0%, #fdfaf0 100%);
+        }
+
+        canvas { display: block; cursor: crosshair; }
+
+        #ui-layer {
+            position: absolute;
+            top: 10px; left: 10px;
+            padding: 10px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid var(--sand-yellow);
+            pointer-events: none;
+            z-index: 10;
+            font-size: 14px;
+        }
+
+        #music-ctrl {
+            position: absolute;
+            top: 10px; right: 10px;
+            z-index: 20;
+            background: white;
+            border: 2px solid var(--ocean-blue);
+            border-radius: 50%;
+            width: 40px; height: 40px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        .modal {
+            display: flex;
+            position: fixed;
+            z-index: 300;
+            left: 0; top: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            justify-content: center; align-items: center;
+        }
+
+        .modal-content {
+            background-color: #fffaf0;
+            padding: 20px;
+            border-radius: 20px;
+            border: 5px solid var(--sand-yellow);
+            max-width: 85%;
+            text-align: center;
+        }
+
+        .level-btn {
+            display: block; width: 100%;
+            padding: 12px; margin: 10px 0;
+            color: white;
+            border-radius: 15px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .lvl-1 { background-color: var(--palm-green); }
+        .lvl-2 { background-color: var(--sunset-orange); }
+        .lvl-3 { background-color: var(--danger-red); }
+
+        .option-btn {
+            display: block; width: 100%;
+            padding: 12px; margin: 8px 0;
+            background: #fff;
+            border: 2px solid var(--ocean-blue);
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .btn-action {
+            padding: 12px 24px;
+            background: var(--ocean-blue);
+            color: white;
+            border-radius: 30px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .flash-red { background: var(--danger-red) !important; transition: 0.1s; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <b>Listening Mastery</b><br>
+        Score: <span id="score">0</span> | Lives: <span id="lives">3</span><br>
+        Time: <span id="timer-display">07:00</span><br>
+        Progress: <span id="progress-text">0/20</span>
+    </div>
+
+    <button id="music-ctrl" onclick="toggleMusic()">🔊</button>
+
+    <audio id="bg-music" loop preload="auto">
+        <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="slash-sound" preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/2364/2364-preview.mp3" type="audio/mpeg">
+    </audio>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="start-screen" class="modal">
+        <div class="modal-content">
+            <h1 style="color: var(--ocean-blue); font-size: 24px;">Listening Skills Slice</h1>
+            <p>Select your speed level:</p>
+            <button class="level-btn lvl-1" onclick="startGame(1)">Level 1: Slow 🏝️</button>
+            <button class="level-btn lvl-2" onclick="startGame(2)">Level 2: Intermediate 🌊</button>
+            <button class="level-btn lvl-3" onclick="startGame(3)">Level 3: Fast ⚡</button>
+        </div>
+    </div>
+
+    <div id="question-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2 style="color: var(--palm-green); font-size: 20px;">Concept Check</h2>
+            <p id="question-text" style="font-weight: bold; font-size: 15px;"></p>
+            <div id="options-container"></div>
+            <div id="answer-feedback" style="font-weight: bold; margin: 8px; min-height: 18px; font-size: 13px;"></div>
+            <button id="continue-btn" class="btn-action" style="display:none;">CONTINUE</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- AUDIO CONTROL ---
+const bgMusic = document.getElementById('bg-music');
+const slashSound = document.getElementById('slash-sound');
+let isMuted = false;
+
+bgMusic.volume = 0.4;
+slashSound.volume = 1.0;
+
+function toggleMusic() {
+    isMuted = !isMuted;
+    bgMusic.muted = isMuted;
+    slashSound.muted = isMuted;
+    document.getElementById('music-ctrl').innerText = isMuted ? '🔇' : '🔊';
+}
+
+function playSlash() {
+    if (!isMuted) {
+        const soundClone = slashSound.cloneNode();
+        soundClone.play().catch(e => console.log("Sound play error:", e));
+    }
+}
+
+// --- UPDATED QUESTION DATA ---
+const masterQuestions = [
+    { q: "What is the main difference between hearing and listening?", options: ["Hearing is active while listening is passive", "Hearing is accidental while listening is focused", "Hearing requires concentration while listening does not", "Hearing and listening mean the same thing"], answer: 1 },
+    { q: "Which of the following is a purpose of listening?", options: ["To avoid communication", "To criticize the speaker immediately", "To understand information clearly", "To interrupt the speaker"], answer: 2 },
+    { q: "Which statement describes a good listener?", options: ["Interrupts the speaker frequently", "Focuses only on personal opinions", "Pays attention to the speaker", "Changes the topic suddenly"], answer: 2 },
+    { q: "Which principle of listening means trying to understand the speaker’s feelings?", options: ["Remove distraction", "Stop talking", "Empathise", "Avoid eye contact"], answer: 2 },
+    { q: "Which is an example of ineffective listening?", options: ["Asking relevant questions", "Listening with patience", "Judgemental listening", "Giving positive feedback"], answer: 2 },
+    { q: "What is a common physical barrier to listening?", options: ["Patience", "Noise", "Reflection", "Eye contact"], answer: 1 },
+    { q: "Which of the following is a sign of ineffective listening?", options: ["Head nodding", "Maintaining eye contact", "Being distracted", "Leaning forward"], answer: 2 },
+    { q: "In the HURIER Model, what does “U” stand for?", options: ["Using", "Understanding", "Uniting", "Updating"], answer: 1 },
+    { q: "Which technique is part of mindful listening?", options: ["HEAR", "SMART", "THINK", "CLEAR"], answer: 0 },
+    { q: "In the HEAR technique, what does “H” stand for?", options: ["Help", "Hear", "Halt", "Hold"], answer: 2 },
+    { q: "What does active listening involve?", options: ["Listening with only your ears", "Listening with all senses", "Thinking about your reply immediately", "Ignoring body language"], answer: 1 },
+    { q: "Which is a non-verbal sign of active listening?", options: ["Interrupting the speaker", "Looking away frequently", "Smiling appropriately", "Changing the topic"], answer: 2 },
+    { q: "Which phrase is an example of positive reinforcement?", options: ["That is wrong.", "I see.", "You should stop talking.", "That makes no sense."], answer: 1 },
+    { q: "Which question is an example of clarification?", options: ["Could you repeat that?", "You are wrong, aren’t you?", "Why are you so emotional?", "Don’t you agree with me?"], answer: 0 },
+    { q: "What is the purpose of reflection in listening?", options: ["To criticize the speaker", "To show understanding of feelings and ideas", "To end the conversation quickly", "To give advice immediately"], answer: 1 },
+    { q: "Which of the following is an open question?", options: ["Did you feel sick?", "Were you angry?", "How did the accident happen?", "Is the pain serious?"], answer: 2 },
+    { q: "Why should listeners avoid interrupting speakers?", options: ["To save time", "To allow the speaker to express thoughts fully", "To control the conversation", "To change the topic quickly"], answer: 1 },
+    { q: "Which statement is TRUE about closed questions?", options: ["They encourage long explanations", "They usually require “yes” or “no” answers", "They begin with “how” and “why”", "They are only used in debates"], answer: 1 },
+    { q: "A nurse says, “Sounds like you’re feeling worried.” This is an example of:", options: ["Reflection", "Judgemental listening", "Distraction", "Defensive listening"], answer: 0 },
+    { q: "Why are listening skills important in healthcare communication?", options: ["They help healthcare workers ignore patients’ emotions", "They improve understanding and patient care", "They reduce communication between staff and patients", "They make conversations shorter only"], answer: 1 }
+];
+
+// --- GAME ENGINE ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let gameActive = false, score = 0, lives = 3, timeLeft = 420;
+let objects = [], particles = [], slicePoints = [];
+let questionQueue = [];
+let gravity, verticalPower, spawnChance;
+
+function setDifficulty(lvl) {
+    const h = canvas.height;
+    if (lvl === 1) {
+        gravity = h * 0.35; 
+        verticalPower = Math.sqrt(2 * (h * 0.7) * gravity);
+        spawnChance = 0.012;
+    } else if (lvl === 2) {
+        gravity = h * 0.65;
+        verticalPower = Math.sqrt(2 * (h * 0.75) * gravity);
+        spawnChance = 0.02;
+    } else {
+        gravity = h * 1.0;
+        verticalPower = Math.sqrt(2 * (h * 0.85) * gravity);
+        spawnChance = 0.035;
+    }
+}
+
+function resize() { 
+    canvas.width = window.innerWidth; 
+    canvas.height = window.innerHeight; 
+}
+window.addEventListener('resize', resize); resize();
+
+class FruitHalf {
+    constructor(x, y, vx, vy, label, side) {
+        this.x = x; this.y = y;
+        this.vx = vx + (side === 'left' ? -120 : 120);
+        this.vy = vy; this.label = label; this.angle = 0;
+        this.rotationSpeed = (Math.random() - 0.5) * 5;
+        this.side = side;
+    }
+    update(dt) {
+        if (!gameActive) return; 
+        this.x += this.vx * dt; this.y += this.vy * dt;
+        this.vy += gravity * dt; this.angle += this.rotationSpeed * dt;
+    }
+    draw() {
+        ctx.save(); ctx.translate(this.x, this.y); ctx.rotate(this.angle);
+        ctx.font = "50px Arial"; ctx.beginPath();
+        if(this.side === 'left') ctx.rect(-50, -50, 50, 100); else ctx.rect(0, -50, 50, 100);
+        ctx.clip(); ctx.fillText(this.label, 0, 0); ctx.restore();
+    }
+}
+
+class GameObject {
+    constructor(isBomb = false) {
+        this.radius = 35;
+        this.x = Math.random() * (canvas.width - 140) + 70;
+        this.y = canvas.height + 50;
+        this.vy = -verticalPower; 
+        this.vx = (Math.random() - 0.5) * (canvas.width * 0.2); 
+        this.isBomb = isBomb;
+        this.label = isBomb ? '💣' : ['🍍', '🥭', '🥥', '🍌', '🍉'][Math.floor(Math.random()*5)];
+    }
+    update(dt) { 
+        if (!gameActive) return; 
+        this.x += this.vx * dt; this.y += this.vy * dt; this.vy += gravity * dt; 
+    }
+    draw() {
+        ctx.font = "50px Arial"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(this.label, this.x, this.y);
+    }
+}
+
+function startGame(lvl) {
+    setDifficulty(lvl);
+    bgMusic.play();
+    score = 0; lives = 3; timeLeft = 420; objects = []; particles = [];
+    questionQueue = [...masterQuestions].sort(() => Math.random() - 0.5);
+    document.getElementById('start-screen').style.display = 'none';
+    gameActive = true;
+    updateUI();
+    const timer = setInterval(() => {
+        if(gameActive) { timeLeft--; updateUI(); if(timeLeft <= 0) endGame("Time's Up!"); }
+    }, 1000);
+    requestAnimationFrame(gameLoop);
+}
+
+function gameLoop() {
+    let dt = 0.016; 
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameActive && Math.random() < spawnChance && objects.length < 3) {
+        objects.push(new GameObject(Math.random() < 0.15));
+    }
+
+    for (let i = objects.length - 1; i >= 0; i--) {
+        let obj = objects[i]; 
+        obj.update(dt); 
+        obj.draw();
+
+        if (gameActive && slicePoints.length > 1) {
+            let hit = false;
+            for(let j=0; j<slicePoints.length-1; j++) {
+                if (lineCircleIntersect(slicePoints[j], slicePoints[j+1], obj, obj.radius)) { hit = true; break; }
+            }
+            if (hit) {
+                if (obj.isBomb) { 
+                    triggerBomb(); 
+                } else {
+                    playSlash();
+                    particles.push(new FruitHalf(obj.x, obj.y, obj.vx, obj.vy, obj.label, 'left'));
+                    particles.push(new FruitHalf(obj.x, obj.y, obj.vx, obj.vy, obj.label, 'right'));
+                    gameActive = false;
+                    setTimeout(triggerQuestion, 150);
+                }
+                objects.splice(i, 1); continue;
+            }
+        }
+
+        if (gameActive && obj.y > canvas.height + 100) {
+            if (!obj.isBomb) { lives--; updateUI(); }
+            objects.splice(i, 1);
+            if (lives <= 0) endGame("Session Over!");
+        }
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt); 
+        particles[i].draw();
+        if (gameActive && particles[i].y > canvas.height + 100) particles.splice(i, 1);
+    }
+
+    drawSlice(); 
+    requestAnimationFrame(gameLoop);
+}
+
+function lineCircleIntersect(p1, p2, circle, r) {
+    let dx = p2.x - p1.x, dy = p2.y - p1.y, l_sq = dx*dx + dy*dy;
+    if (l_sq === 0) return false;
+    let t = Math.max(0, Math.min(1, ((circle.x - p1.x) * dx + (circle.y - p1.y) * dy) / l_sq));
+    return ((circle.x - (p1.x + t * dx))**2 + (circle.y - (p1.y + t * dy))**2) < r*r;
+}
+
+function drawSlice() {
+    if (slicePoints.length < 2) return;
+    ctx.beginPath(); ctx.strokeStyle = "white"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.moveTo(slicePoints[0].x, slicePoints[0].y);
+    for(let p of slicePoints) ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+}
+
+function triggerBomb() {
+    lives--; updateUI();
+    document.body.classList.add('flash-red');
+    setTimeout(() => document.body.classList.remove('flash-red'), 100);
+}
+
+function triggerQuestion() {
+    if (questionQueue.length === 0) { endGame("Success!"); return; }
+    const q = questionQueue[0];
+    document.getElementById('question-text').innerText = q.q;
+    const container = document.getElementById('options-container');
+    container.innerHTML = "";
+    document.getElementById('answer-feedback').innerText = "";
+    document.getElementById('continue-btn').style.display = "none";
+    document.getElementById('question-modal').style.display = "flex";
+
+    q.options.forEach((opt, idx) => {
+        const b = document.createElement('button');
+        b.className = 'option-btn'; b.innerText = opt;
+        b.onclick = () => {
+            if (idx === q.answer) {
+                score += 10; questionQueue.shift(); updateUI();
+                document.getElementById('answer-feedback').innerText = "CORRECT! 🌴";
+                document.getElementById('continue-btn').style.display = "block";
+            } else {
+                score = Math.max(0, score-5); updateUI();
+                document.getElementById('answer-feedback').innerText = "TRY AGAIN SOON!";
+                questionQueue.push(questionQueue.shift());
+                document.getElementById('continue-btn').style.display = "block";
+            }
+            Array.from(container.children).forEach(btn => btn.disabled = true);
+        };
+        container.appendChild(b);
+    });
+}
+
+document.getElementById('continue-btn').onclick = () => {
+    document.getElementById('question-modal').style.display = "none";
+    slicePoints = []; 
+    gameActive = true; 
+};
+
+function updateUI() {
+    document.getElementById('score').innerText = score;
+    document.getElementById('lives').innerText = lives;
+    document.getElementById('progress-text').innerText = `${masterQuestions.length - questionQueue.length}/${masterQuestions.length}`;
+    let m = Math.floor(timeLeft/60), s = timeLeft%60;
+    document.getElementById('timer-display').innerText = `${m}:${s < 10 ? '0'+s : s}`;
+}
+
+function endGame(msg) { alert(msg + "\nFinal Score: " + score); location.reload(); }
+
+function inputMove(x, y, isDown) {
+    if(isDown) {
+        slicePoints.push({x, y});
+        if(slicePoints.length > 5) slicePoints.shift();
+    } else { slicePoints = []; }
+}
+canvas.addEventListener('mousemove', (e) => inputMove(e.clientX, e.clientY, e.buttons === 1));
+canvas.addEventListener('mousedown', (e) => { slicePoints = []; inputMove(e.clientX, e.clientY, true); });
+canvas.addEventListener('mouseup', () => slicePoints = []);
+canvas.addEventListener('touchmove', (e) => { inputMove(e.touches[0].clientX, e.touches[0].clientY, true); e.preventDefault(); }, {passive:false});
+canvas.addEventListener('touchend', () => slicePoints = []);
+</script>
+
+</body>
+</html>
